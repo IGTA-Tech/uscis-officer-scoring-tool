@@ -36,3 +36,4 @@ next-env.d.ts
 .DS_Store
 Thumbs.db
 supabase/.temp/
+netlify-env.txt
