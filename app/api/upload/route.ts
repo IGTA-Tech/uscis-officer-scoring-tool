@@ -99,15 +99,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Create or use existing session
-    let currentSessionId = sessionId;
-    if (!currentSessionId && isSupabaseConfigured()) {
+    let currentSessionId: string;
+    if (sessionId) {
+      currentSessionId = sessionId;
+    } else if (isSupabaseConfigured()) {
       const session = await createScoringSession({
         documentType: documentType!,
         visaType: visaType!,
         beneficiaryName: beneficiaryName || undefined,
       });
       currentSessionId = session.id;
-    } else if (!currentSessionId) {
+    } else {
       currentSessionId = uuidv4();
     }
 
