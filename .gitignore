@@ -37,3 +37,6 @@ next-env.d.ts
 Thumbs.db
 supabase/.temp/
 netlify-env.txt
+
+# Local Netlify folder
+.netlify
