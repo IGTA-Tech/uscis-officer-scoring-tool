@@ -175,6 +175,15 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Validate UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(sessionId)) {
+    return NextResponse.json(
+      { error: 'Invalid sessionId format. Must be a valid UUID.' },
+      { status: 400 }
+    );
+  }
+
   if (!isSupabaseConfigured()) {
     return NextResponse.json(
       { error: 'Database not configured' },
