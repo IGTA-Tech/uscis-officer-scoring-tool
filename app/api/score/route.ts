@@ -1,9 +1,12 @@
 /**
  * Score API Route
- * Initiates officer scoring for a session
+ *
+ * Initiates officer scoring for a session.
+ * Uses Inngest for background processing of large documents.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { inngest } from '@/app/lib/inngest/client';
 import { runOfficerScoring } from '@/app/lib/scoring/officer-scorer';
 import {
   getScoringSession,
@@ -14,10 +17,15 @@ import {
 } from '@/app/lib/database/supabase';
 import { DocumentType, VisaType } from '@/app/lib/types';
 
+// Check if Inngest is configured (has signing key in production)
+function isInngestConfigured(): boolean {
+  return process.env.NODE_ENV === 'development' || !!process.env.INNGEST_SIGNING_KEY;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { sessionId, documentContent, rfeOriginalContent } = body;
+    const { sessionId, documentContent, useBackground = true } = body;
 
     if (!sessionId) {
       return NextResponse.json(
@@ -26,17 +34,62 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get session info
     let session: {
       document_type: string;
       visa_type: string;
       beneficiary_name?: string;
     } | null = null;
+
+    if (isSupabaseConfigured()) {
+      session = await getScoringSession(sessionId);
+    }
+
+    const visaType = session?.visa_type || body.visaType || 'O-1A';
+    const documentType = session?.document_type || body.documentType || 'full_petition';
+    const beneficiaryName = session?.beneficiary_name || body.beneficiaryName;
+
+    // For background processing with Inngest
+    if (useBackground && isInngestConfigured()) {
+      console.log(`[Score] Triggering background scoring for session ${sessionId}`);
+
+      // Update session status
+      if (isSupabaseConfigured()) {
+        await updateScoringSession(sessionId, {
+          status: 'queued',
+          progress: 0,
+          progressMessage: 'Queued for processing...',
+        });
+      }
+
+      // Send event to Inngest
+      await inngest.send({
+        name: 'scoring/requested',
+        data: {
+          sessionId,
+          documentType,
+          visaType,
+          beneficiaryName,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        sessionId,
+        status: 'queued',
+        message: 'Scoring started in background. Poll /api/score?sessionId=... for progress.',
+        background: true,
+      });
+    }
+
+    // Synchronous processing (fallback or explicit request)
+    console.log(`[Score] Running synchronous scoring for session ${sessionId}`);
+
     let files: { extracted_text?: string; document_category?: string }[] = [];
     let fullDocumentContent = documentContent || '';
 
     // Get session and files from database if configured
     if (isSupabaseConfigured()) {
-      session = await getScoringSession(sessionId);
       files = await getFilesForSession(sessionId);
 
       // Build document content from uploaded files if not provided
@@ -47,15 +100,6 @@ export async function POST(request: NextRequest) {
             return `${header}\n${f.extracted_text || '[No text extracted]'}`;
           })
           .join('\n\n---\n\n');
-      }
-
-      // Extract RFE original if this is an RFE response
-      let rfeOriginal = rfeOriginalContent;
-      if (!rfeOriginal && session?.document_type === 'rfe_response') {
-        const rfeFile = files.find((f) => f.document_category === 'rfe_original');
-        if (rfeFile) {
-          rfeOriginal = rfeFile.extracted_text;
-        }
       }
 
       // Update session status
@@ -74,7 +118,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Truncate very long documents to avoid AI timeout
-    // Keep first 150,000 characters (~30,000 words, ~60 pages)
     const MAX_CONTENT_LENGTH = 150000;
     if (fullDocumentContent.length > MAX_CONTENT_LENGTH) {
       console.log(`[Score] Truncating document from ${fullDocumentContent.length} to ${MAX_CONTENT_LENGTH} characters`);
@@ -82,17 +125,12 @@ export async function POST(request: NextRequest) {
         '\n\n[... Document truncated for processing. Scoring based on first ~60 pages of content ...]';
     }
 
-    // Get visa type and document type
-    const visaType = (session?.visa_type || body.visaType || 'O-1A') as VisaType;
-    const documentType = (session?.document_type || body.documentType || 'full_petition') as DocumentType;
-    const beneficiaryName = session?.beneficiary_name || body.beneficiaryName;
-
     // Run the officer scoring
     const results = await runOfficerScoring(
       {
         sessionId,
-        documentType,
-        visaType,
+        documentType: documentType as DocumentType,
+        visaType: visaType as VisaType,
         beneficiaryName,
         documentContent: fullDocumentContent,
         rfeOriginalContent: body.rfeOriginalContent,
@@ -137,6 +175,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       sessionId,
+      background: false,
       results: {
         overallScore: results.overallScore,
         overallRating: results.overallRating,
@@ -155,25 +194,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[Score] Scoring failed:', error);
 
-    // Always return proper JSON
     const errorMessage = error instanceof Error ? error.message : 'Scoring failed';
-
-    // Try to update session with error - don't await to avoid double timeout
-    try {
-      if (isSupabaseConfigured()) {
-        // Get sessionId from the original request body if possible
-        const bodyText = await request.text().catch(() => '{}');
-        const body = JSON.parse(bodyText).catch?.(() => ({})) || {};
-        if (body.sessionId) {
-          updateScoringSession(body.sessionId, {
-            status: 'error',
-            errorMessage,
-          }).catch(console.error);
-        }
-      }
-    } catch {
-      // Ignore errors when trying to update session
-    }
 
     return NextResponse.json(
       {
@@ -187,7 +208,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET: Get scoring results for a session
+ * GET: Get scoring status and results for a session
  */
 export async function GET(request: NextRequest) {
   const sessionId = request.nextUrl.searchParams.get('sessionId');

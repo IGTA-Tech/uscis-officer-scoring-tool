@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import {
   Scale,
@@ -14,7 +14,7 @@ import {
   ChevronUp,
   FileText,
   Download,
-  Mail,
+  Clock,
 } from 'lucide-react';
 
 interface ScoringResults {
@@ -59,6 +59,8 @@ interface ChatMessage {
   timestamp: string;
 }
 
+type SessionStatus = 'queued' | 'processing' | 'scoring' | 'completed' | 'error';
+
 export default function ScoringResultsPage() {
   const params = useParams();
   const sessionId = params.id as string;
@@ -66,6 +68,11 @@ export default function ScoringResultsPage() {
   const [results, setResults] = useState<ScoringResults | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Progress tracking for background processing
+  const [status, setStatus] = useState<SessionStatus>('queued');
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState('Loading...');
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -78,24 +85,69 @@ export default function ScoringResultsPage() {
   const [expandedCriteria, setExpandedCriteria] = useState<number[]>([]);
   const [showFullReport, setShowFullReport] = useState(false);
 
-  // Fetch results
-  useEffect(() => {
-    async function fetchResults() {
-      try {
-        const response = await fetch(`/api/score?sessionId=${sessionId}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch results');
-        }
-        const data = await response.json();
-        if (data.results) {
-          setResults(data.results);
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
-      } finally {
+  // Polling ref to track if we should continue polling
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch results with polling support
+  const fetchResults = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/score?sessionId=${sessionId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch results');
+      }
+      const data = await response.json();
+
+      // Update status and progress
+      setStatus(data.status || 'completed');
+      setProgress(data.progress || 0);
+      setProgressMessage(data.progressMessage || '');
+
+      // If completed, set results and stop polling
+      if (data.status === 'completed' && data.results) {
+        setResults(data.results);
         setLoading(false);
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+      } else if (data.status === 'error') {
+        setError(data.errorMessage || 'Scoring failed');
+        setLoading(false);
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+      }
+      // If still processing, polling will continue
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+      setLoading(false);
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
       }
     }
+  }, [sessionId]);
+
+  // Initial fetch and polling setup
+  useEffect(() => {
+    // Initial fetch
+    fetchResults();
+
+    // Start polling every 2 seconds
+    pollingRef.current = setInterval(fetchResults, 2000);
+
+    // Cleanup on unmount
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, [fetchResults]);
+
+  // Fetch chat history when results are loaded
+  useEffect(() => {
+    if (!results) return;
 
     async function fetchChatHistory() {
       try {
@@ -109,9 +161,8 @@ export default function ScoringResultsPage() {
       }
     }
 
-    fetchResults();
     fetchChatHistory();
-  }, [sessionId]);
+  }, [sessionId, results]);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -192,24 +243,69 @@ export default function ScoringResultsPage() {
     window.open(`/api/export/pdf?sessionId=${sessionId}&format=pdf`, '_blank');
   };
 
-  if (loading) {
+  // Show processing UI while background job is running
+  if (loading && status !== 'completed') {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Loading your results...</p>
+        <div className="text-center max-w-md mx-auto px-4">
+          <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            {status === 'queued' ? (
+              <Clock className="w-12 h-12 text-blue-600" />
+            ) : (
+              <Scale className="w-12 h-12 text-blue-600 animate-pulse" />
+            )}
+          </div>
+
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            {status === 'queued' && 'Queued for Processing'}
+            {status === 'processing' && 'Processing Documents'}
+            {status === 'scoring' && 'Officer Reviewing Petition'}
+          </h2>
+
+          <p className="text-gray-600 mb-6">
+            {progressMessage || 'Please wait while we analyze your petition...'}
+          </p>
+
+          {/* Progress Bar */}
+          <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
+            <div
+              className="bg-blue-600 h-3 rounded-full transition-all duration-500"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+
+          <p className="text-sm text-gray-500">{progress}% complete</p>
+
+          <div className="mt-8 p-4 bg-blue-50 rounded-xl border border-blue-200">
+            <p className="text-sm text-blue-700">
+              <strong>Large documents take longer to process.</strong><br />
+              You can leave this page open or come back later - we&apos;ll save your results.
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
-  if (error || !results) {
+  if (error) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center">
           <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Results</h2>
-          <p className="text-red-600">{error || 'Results not found'}</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Error</h2>
+          <p className="text-red-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!results) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-8 text-center">
+          <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Results Not Found</h2>
+          <p className="text-gray-600">No scoring results available for this session.</p>
         </div>
       </div>
     );
