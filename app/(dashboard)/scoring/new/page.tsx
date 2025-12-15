@@ -6,9 +6,9 @@ import {
   Upload,
   FileText,
   AlertCircle,
-  CheckCircle,
   Loader2,
   Scale,
+  X,
 } from 'lucide-react';
 
 type DocumentType = 'full_petition' | 'rfe_response' | 'exhibit_packet' | 'contract_deal_memo';
@@ -33,7 +33,7 @@ export default function NewScoringPage() {
 
   const documentTypes: { value: DocumentType; label: string; description: string }[] = [
     { value: 'full_petition', label: 'Full Petition', description: 'Complete visa petition package' },
-    { value: 'rfe_response', label: 'RFE Response', description: 'Response to Request for Evidence (include original RFE)' },
+    { value: 'rfe_response', label: 'RFE Response', description: 'Response to Request for Evidence' },
     { value: 'exhibit_packet', label: 'Exhibit Packet', description: 'Evidence exhibits and supporting documents' },
     { value: 'contract_deal_memo', label: 'Contract/Deal Memo', description: 'Employment agreements and deal memos' },
   ];
@@ -80,7 +80,6 @@ export default function NewScoringPage() {
     setError(null);
 
     try {
-      // Create form data for upload
       const formData = new FormData();
       formData.append('documentType', documentType);
       formData.append('visaType', visaType);
@@ -92,7 +91,6 @@ export default function NewScoringPage() {
         formData.append(`file${index}`, f.file);
       });
 
-      // Upload files
       const uploadResponse = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
@@ -106,7 +104,6 @@ export default function NewScoringPage() {
       const uploadData = await uploadResponse.json();
       const sessionId = uploadData.sessionId;
 
-      // Start scoring
       setIsUploading(false);
       setIsScoring(true);
 
@@ -121,7 +118,6 @@ export default function NewScoringPage() {
         throw new Error(data.error || 'Scoring failed');
       }
 
-      // Redirect to results page
       router.push(`/scoring/${sessionId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -132,75 +128,80 @@ export default function NewScoringPage() {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
+      {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-2">New Officer Scoring</h1>
-        <p className="text-slate-400">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">New Petition Scoring</h1>
+        <p className="text-gray-600">
           Upload your documents for evaluation by our AI USCIS officer.
         </p>
       </div>
 
       {/* Document Type Selection */}
-      <div className="bg-slate-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Document Type</h2>
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Document Type</h2>
         <div className="grid md:grid-cols-2 gap-3">
           {documentTypes.map((type) => (
             <button
               key={type.value}
               onClick={() => setDocumentType(type.value)}
-              className={`p-4 rounded-lg border-2 text-left transition-colors ${
+              className={`p-4 rounded-xl border-2 text-left transition-all ${
                 documentType === type.value
-                  ? 'border-amber-500 bg-amber-500/10'
-                  : 'border-slate-600 hover:border-slate-500'
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-200 hover:border-gray-300 bg-white'
               }`}
             >
-              <div className="font-medium text-white">{type.label}</div>
-              <div className="text-sm text-slate-400">{type.description}</div>
+              <div className={`font-medium ${documentType === type.value ? 'text-blue-700' : 'text-gray-900'}`}>
+                {type.label}
+              </div>
+              <div className="text-sm text-gray-500">{type.description}</div>
             </button>
           ))}
         </div>
       </div>
 
       {/* Visa Type Selection */}
-      <div className="bg-slate-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Visa Type</h2>
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Visa Type</h2>
         <div className="grid md:grid-cols-2 gap-3">
           {visaTypes.map((type) => (
             <button
               key={type.value}
               onClick={() => setVisaType(type.value)}
-              className={`p-4 rounded-lg border-2 text-left transition-colors ${
+              className={`p-4 rounded-xl border-2 text-left transition-all ${
                 visaType === type.value
-                  ? 'border-amber-500 bg-amber-500/10'
-                  : 'border-slate-600 hover:border-slate-500'
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-200 hover:border-gray-300 bg-white'
               }`}
             >
-              <div className="font-medium text-white">{type.label}</div>
+              <div className={`font-medium ${visaType === type.value ? 'text-blue-700' : 'text-gray-900'}`}>
+                {type.label}
+              </div>
             </button>
           ))}
         </div>
       </div>
 
       {/* Beneficiary Name */}
-      <div className="bg-slate-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Beneficiary Name (Optional)</h2>
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Beneficiary Name (Optional)</h2>
         <input
           type="text"
           value={beneficiaryName}
           onChange={(e) => setBeneficiaryName(e.target.value)}
           placeholder="Enter beneficiary name"
-          className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-amber-500"
+          className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
       </div>
 
       {/* File Upload */}
-      <div className="bg-slate-800 rounded-xl p-6 mb-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Upload Documents</h2>
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Upload Documents</h2>
 
         {/* Drop Zone */}
         <div
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
-          className="border-2 border-dashed border-slate-600 rounded-lg p-8 text-center hover:border-amber-500 transition-colors cursor-pointer"
+          className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-400 transition-colors cursor-pointer bg-gray-50"
         >
           <input
             type="file"
@@ -211,11 +212,13 @@ export default function NewScoringPage() {
             id="file-upload"
           />
           <label htmlFor="file-upload" className="cursor-pointer">
-            <Upload className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-            <p className="text-white mb-2">
+            <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Upload className="w-8 h-8 text-blue-600" />
+            </div>
+            <p className="text-gray-900 font-medium mb-2">
               Drag & drop files here or click to browse
             </p>
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-gray-500">
               Supports PDF, Word, images (up to 150MB per file)
             </p>
           </label>
@@ -227,13 +230,15 @@ export default function NewScoringPage() {
             {files.map((f, index) => (
               <div
                 key={index}
-                className="flex items-center justify-between p-3 bg-slate-700 rounded-lg"
+                className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200"
               >
                 <div className="flex items-center gap-3">
-                  <FileText className="w-5 h-5 text-amber-500" />
+                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <FileText className="w-5 h-5 text-blue-600" />
+                  </div>
                   <div>
-                    <div className="text-white text-sm">{f.file.name}</div>
-                    <div className="text-slate-400 text-xs">
+                    <div className="text-gray-900 font-medium text-sm">{f.file.name}</div>
+                    <div className="text-gray-500 text-xs">
                       {(f.file.size / (1024 * 1024)).toFixed(2)} MB
                       {f.category && ` • ${f.category}`}
                     </div>
@@ -241,9 +246,9 @@ export default function NewScoringPage() {
                 </div>
                 <button
                   onClick={() => removeFile(index)}
-                  className="text-slate-400 hover:text-red-400"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                 >
-                  ×
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             ))}
@@ -251,8 +256,8 @@ export default function NewScoringPage() {
         )}
 
         {documentType === 'rfe_response' && (
-          <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-            <p className="text-amber-500 text-sm">
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+            <p className="text-blue-700 text-sm">
               <strong>For RFE Response scoring:</strong> Please upload both the original
               RFE from USCIS and your response document.
             </p>
@@ -262,9 +267,9 @@ export default function NewScoringPage() {
 
       {/* Error Message */}
       {error && (
-        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-3">
-          <AlertCircle className="w-5 h-5 text-red-500" />
-          <p className="text-red-400">{error}</p>
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+          <p className="text-red-700">{error}</p>
         </div>
       )}
 
@@ -272,7 +277,7 @@ export default function NewScoringPage() {
       <button
         onClick={handleSubmit}
         disabled={files.length === 0 || isUploading || isScoring}
-        className="w-full py-4 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-600 disabled:cursor-not-allowed text-slate-900 font-bold rounded-lg flex items-center justify-center gap-2 transition-colors"
+        className="w-full py-4 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-green-500/30 disabled:shadow-none"
       >
         {isUploading ? (
           <>
@@ -287,7 +292,7 @@ export default function NewScoringPage() {
         ) : (
           <>
             <Scale className="w-5 h-5" />
-            Start Officer Scoring
+            Start Petition Scoring
           </>
         )}
       </button>

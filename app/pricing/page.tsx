@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { Check, Sparkles, Zap, Crown, ArrowLeft, Loader2 } from 'lucide-react';
+import Image from 'next/image';
+import { Check, Zap, Crown, ArrowLeft, Loader2 } from 'lucide-react';
 
 interface PricingTier {
   name: string;
@@ -75,13 +76,7 @@ const pricingTiers: PricingTier[] = [
 ];
 
 export default function PricingPage() {
-  const [isDark, setIsDark] = useState(true);
   const [loading, setLoading] = useState<string | null>(null);
-
-  useEffect(() => {
-    const theme = localStorage.getItem('xtraordinary-theme');
-    setIsDark(theme !== 'light');
-  }, []);
 
   const handlePurchase = async (priceId: string) => {
     setLoading(priceId);
@@ -108,24 +103,46 @@ export default function PricingPage() {
   };
 
   return (
-    <main className={`min-h-screen ${isDark ? 'bg-gradient-to-b from-slate-900 to-slate-800' : 'bg-gradient-to-b from-gray-50 to-white'}`}>
-      {/* Header */}
-      <header className={`border-b ${isDark ? 'border-slate-700' : 'border-gray-200'}`}>
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <Link href="/" className="flex items-center gap-2">
-            <Sparkles className="w-6 h-6 text-amber-500" />
-            <span className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Xtraordinary
-            </span>
-          </Link>
+    <main className="min-h-screen bg-gray-50">
+      {/* Navigation */}
+      <nav className="bg-white border-b border-gray-100 sticky top-0 z-50">
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <Link href="/" className="flex items-center gap-2">
+              <Image
+                src="/logo.png"
+                alt="Xtra Odinary Research"
+                width={180}
+                height={50}
+                className="h-10 w-auto"
+              />
+            </Link>
+            <div className="hidden md:flex items-center gap-8">
+              <Link href="/#features" className="text-gray-600 hover:text-gray-900 font-medium">
+                Features
+              </Link>
+              <Link href="/#how-it-works" className="text-gray-600 hover:text-gray-900 font-medium">
+                How It Works
+              </Link>
+              <Link href="/pricing" className="text-blue-600 font-medium">
+                Pricing
+              </Link>
+            </div>
+            <Link
+              href="/scoring/new"
+              className="bg-green-500 hover:bg-green-600 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors"
+            >
+              Get Started
+            </Link>
+          </div>
         </div>
-      </header>
+      </nav>
 
-      <div className="container mx-auto px-4 py-16">
+      <div className="container mx-auto px-4 py-12">
         {/* Back Link */}
         <Link
           href="/"
-          className={`inline-flex items-center gap-2 mb-8 ${isDark ? 'text-slate-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}
+          className="inline-flex items-center gap-2 text-gray-500 hover:text-gray-900 mb-8"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Home
@@ -133,24 +150,26 @@ export default function PricingPage() {
 
         {/* Header */}
         <div className="text-center mb-16">
-          <h1 className={`text-4xl font-bold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
             Simple, Transparent Pricing
           </h1>
-          <p className={`text-xl ${isDark ? 'text-slate-400' : 'text-gray-600'}`}>
+          <p className="text-xl text-gray-600">
             Start with a free evaluation. Upgrade when you need more.
           </p>
         </div>
 
         {/* Free Tier */}
-        <div className={`max-w-md mx-auto mb-12 p-6 rounded-xl border-2 border-dashed ${isDark ? 'border-green-500/50 bg-green-500/10' : 'border-green-400 bg-green-50'}`}>
+        <div className="max-w-md mx-auto mb-12 p-6 rounded-2xl border-2 border-dashed border-green-400 bg-green-50">
           <div className="flex items-center gap-3 mb-4">
-            <Zap className="w-8 h-8 text-green-500" />
+            <div className="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center">
+              <Zap className="w-6 h-6 text-white" />
+            </div>
             <div>
-              <h3 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Free Trial</h3>
-              <p className={isDark ? 'text-green-400' : 'text-green-700'}>No credit card required</p>
+              <h3 className="text-xl font-bold text-gray-900">Free Trial</h3>
+              <p className="text-green-700 font-medium">No credit card required</p>
             </div>
           </div>
-          <p className={`mb-4 ${isDark ? 'text-slate-300' : 'text-gray-600'}`}>
+          <p className="text-gray-600 mb-4">
             Get your first petition scored completely free. See the full officer report, RFE predictions, and recommendations.
           </p>
           <Link
@@ -167,42 +186,38 @@ export default function PricingPage() {
           {pricingTiers.map((tier) => (
             <div
               key={tier.priceId}
-              className={`relative p-6 rounded-xl border ${
+              className={`relative p-6 rounded-2xl border bg-white ${
                 tier.popular
-                  ? isDark
-                    ? 'border-amber-500 bg-slate-800'
-                    : 'border-amber-500 bg-white shadow-lg'
-                  : isDark
-                    ? 'border-slate-700 bg-slate-800/50'
-                    : 'border-gray-200 bg-white'
+                  ? 'border-blue-500 shadow-lg shadow-blue-500/10'
+                  : 'border-gray-200'
               }`}
             >
               {tier.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span className="bg-amber-500 text-slate-900 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
+                  <span className="bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
                     <Crown className="w-3 h-3" />
                     MOST POPULAR
                   </span>
                 </div>
               )}
 
-              <h3 className={`text-xl font-bold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
                 {tier.name}
               </h3>
               <div className="mb-2">
-                <span className={`text-3xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                <span className="text-3xl font-bold text-gray-900">
                   {tier.price}
                 </span>
               </div>
-              <p className={`text-sm mb-6 ${isDark ? 'text-slate-400' : 'text-gray-600'}`}>
+              <p className="text-sm text-gray-500 mb-6">
                 {tier.description}
               </p>
 
               <ul className="space-y-3 mb-6">
                 {tier.features.map((feature, i) => (
                   <li key={i} className="flex items-start gap-2">
-                    <Check className="w-4 h-4 text-green-500 mt-0.5" />
-                    <span className={`text-sm ${isDark ? 'text-slate-300' : 'text-gray-700'}`}>
+                    <Check className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                    <span className="text-sm text-gray-700">
                       {feature}
                     </span>
                   </li>
@@ -214,10 +229,8 @@ export default function PricingPage() {
                 disabled={loading === tier.priceId}
                 className={`w-full py-3 rounded-lg font-semibold transition-colors ${
                   tier.popular
-                    ? 'bg-amber-500 hover:bg-amber-600 text-slate-900'
-                    : isDark
-                      ? 'bg-slate-700 hover:bg-slate-600 text-white'
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-900'
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-900'
                 } disabled:opacity-50`}
               >
                 {loading === tier.priceId ? (
@@ -232,10 +245,10 @@ export default function PricingPage() {
 
         {/* FAQ */}
         <div className="max-w-3xl mx-auto mt-20">
-          <h2 className={`text-2xl font-bold text-center mb-8 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          <h2 className="text-2xl font-bold text-center text-gray-900 mb-8">
             Frequently Asked Questions
           </h2>
-          <div className="space-y-6">
+          <div className="space-y-4">
             {[
               {
                 q: 'What counts as one scoring?',
@@ -254,16 +267,38 @@ export default function PricingPage() {
                 a: 'Absolutely. All documents are encrypted and we never share your data. Documents are automatically deleted after 30 days.',
               },
             ].map((faq, i) => (
-              <div key={i} className={`p-4 rounded-lg ${isDark ? 'bg-slate-800' : 'bg-gray-50'}`}>
-                <h4 className={`font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              <div key={i} className="p-6 rounded-xl bg-white border border-gray-200">
+                <h4 className="font-semibold text-gray-900 mb-2">
                   {faq.q}
                 </h4>
-                <p className={isDark ? 'text-slate-400' : 'text-gray-600'}>{faq.a}</p>
+                <p className="text-gray-600">{faq.a}</p>
               </div>
             ))}
           </div>
         </div>
       </div>
+
+      {/* Footer */}
+      <footer className="bg-gray-900 text-gray-400 py-12 mt-20">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+            <Image
+              src="/logo.png"
+              alt="Xtra Odinary Research"
+              width={150}
+              height={40}
+              className="h-8 w-auto brightness-0 invert"
+            />
+            <p className="text-sm text-center md:text-left">
+              This tool provides AI-generated assessments for educational purposes.
+              Always consult with a qualified immigration attorney.
+            </p>
+            <p className="text-sm">
+              &copy; {new Date().getFullYear()} Xtra Odinary Research
+            </p>
+          </div>
+        </div>
+      </footer>
     </main>
   );
 }

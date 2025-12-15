@@ -13,6 +13,8 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
+  Download,
+  Mail,
 } from 'lucide-react';
 
 interface ScoringResults {
@@ -169,21 +171,34 @@ export default function ScoringResultsPage() {
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 70) return 'text-green-500';
+    if (score >= 70) return 'text-green-600';
     if (score >= 50) return 'text-amber-500';
     return 'text-red-500';
   };
 
+  const getScoreBg = (score: number) => {
+    if (score >= 70) return 'bg-green-50 border-green-200';
+    if (score >= 50) return 'bg-amber-50 border-amber-200';
+    return 'bg-red-50 border-red-200';
+  };
+
   const getRatingColor = (rating: string) => {
-    if (rating === 'Approve' || rating === 'Strong') return 'bg-green-500/20 text-green-400 border-green-500/30';
-    if (rating === 'RFE Likely' || rating === 'Adequate') return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
-    return 'bg-red-500/20 text-red-400 border-red-500/30';
+    if (rating === 'Approve' || rating === 'Strong') return 'bg-green-100 text-green-700 border-green-300';
+    if (rating === 'RFE Likely' || rating === 'Adequate') return 'bg-amber-100 text-amber-700 border-amber-300';
+    return 'bg-red-100 text-red-700 border-red-300';
+  };
+
+  const handleExportPDF = async () => {
+    window.open(`/api/export/pdf?sessionId=${sessionId}&format=pdf`, '_blank');
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Loading your results...</p>
+        </div>
       </div>
     );
   }
@@ -191,10 +206,10 @@ export default function ScoringResultsPage() {
   if (error || !results) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-6 text-center">
-          <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-white mb-2">Error Loading Results</h2>
-          <p className="text-red-400">{error || 'Results not found'}</p>
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center">
+          <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Results</h2>
+          <p className="text-red-600">{error || 'Results not found'}</p>
         </div>
       </div>
     );
@@ -206,37 +221,46 @@ export default function ScoringResultsPage() {
         {/* Main Results - 2 columns */}
         <div className="lg:col-span-2 space-y-6">
           {/* Score Card */}
-          <div className="bg-slate-800 rounded-xl p-6">
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
             <div className="flex items-center justify-between mb-6">
-              <h1 className="text-2xl font-bold text-white">Officer Assessment</h1>
-              <span className={`px-4 py-2 rounded-full border ${getRatingColor(results.overallRating)}`}>
-                {results.overallRating}
-              </span>
+              <h1 className="text-2xl font-bold text-gray-900">Officer Assessment</h1>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleExportPDF}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Export PDF
+                </button>
+                <span className={`px-4 py-2 rounded-full border font-medium ${getRatingColor(results.overallRating)}`}>
+                  {results.overallRating}
+                </span>
+              </div>
             </div>
 
             <div className="grid md:grid-cols-4 gap-4 mb-6">
-              <div className="text-center p-4 bg-slate-700 rounded-lg">
+              <div className={`text-center p-4 rounded-xl border ${getScoreBg(results.overallScore)}`}>
                 <div className={`text-4xl font-bold ${getScoreColor(results.overallScore)}`}>
                   {results.overallScore}
                 </div>
-                <div className="text-slate-400 text-sm">Overall Score</div>
+                <div className="text-gray-600 text-sm mt-1">Overall Score</div>
               </div>
-              <div className="text-center p-4 bg-slate-700 rounded-lg">
-                <div className="text-4xl font-bold text-green-500">{results.approvalProbability}%</div>
-                <div className="text-slate-400 text-sm">Approval</div>
+              <div className="text-center p-4 bg-green-50 border border-green-200 rounded-xl">
+                <div className="text-4xl font-bold text-green-600">{results.approvalProbability}%</div>
+                <div className="text-gray-600 text-sm mt-1">Approval</div>
               </div>
-              <div className="text-center p-4 bg-slate-700 rounded-lg">
+              <div className="text-center p-4 bg-amber-50 border border-amber-200 rounded-xl">
                 <div className="text-4xl font-bold text-amber-500">{results.rfeProbability}%</div>
-                <div className="text-slate-400 text-sm">RFE Likely</div>
+                <div className="text-gray-600 text-sm mt-1">RFE Likely</div>
               </div>
-              <div className="text-center p-4 bg-slate-700 rounded-lg">
+              <div className="text-center p-4 bg-red-50 border border-red-200 rounded-xl">
                 <div className="text-4xl font-bold text-red-500">{results.denialRisk}%</div>
-                <div className="text-slate-400 text-sm">Denial Risk</div>
+                <div className="text-gray-600 text-sm mt-1">Denial Risk</div>
               </div>
             </div>
 
             {/* Filing Recommendation */}
-            <div className={`p-4 rounded-lg border ${getRatingColor(results.overallRating)}`}>
+            <div className={`p-4 rounded-xl border ${getRatingColor(results.overallRating)}`}>
               <div className="font-semibold mb-1">Filing Recommendation</div>
               <div className="text-sm">
                 {results.overallScore >= 70
@@ -249,47 +273,47 @@ export default function ScoringResultsPage() {
           </div>
 
           {/* Criterion Breakdown */}
-          <div className="bg-slate-800 rounded-xl p-6">
-            <h2 className="text-xl font-bold text-white mb-4">Criterion-by-Criterion Analysis</h2>
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Criterion-by-Criterion Analysis</h2>
             <div className="space-y-3">
               {results.criteriaScores.map((criterion, index) => (
-                <div key={index} className="border border-slate-700 rounded-lg overflow-hidden">
+                <div key={index} className="border border-gray-200 rounded-xl overflow-hidden">
                   <button
                     onClick={() => toggleCriterion(index)}
-                    className="w-full p-4 flex items-center justify-between hover:bg-slate-700/50 transition-colors"
+                    className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
                   >
                     <div className="flex items-center gap-4">
-                      <span className={`font-bold ${getScoreColor(criterion.score)}`}>
+                      <span className={`font-bold text-lg ${getScoreColor(criterion.score)}`}>
                         {criterion.score}/100
                       </span>
-                      <span className="text-white">
+                      <span className="text-gray-900 font-medium">
                         Criterion {criterion.criterionNumber}: {criterion.criterionName}
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className={`px-2 py-1 rounded text-xs ${getRatingColor(criterion.rating)}`}>
+                      <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getRatingColor(criterion.rating)}`}>
                         {criterion.rating}
                       </span>
                       {expandedCriteria.includes(index) ? (
-                        <ChevronUp className="w-4 h-4 text-slate-400" />
+                        <ChevronUp className="w-5 h-5 text-gray-400" />
                       ) : (
-                        <ChevronDown className="w-4 h-4 text-slate-400" />
+                        <ChevronDown className="w-5 h-5 text-gray-400" />
                       )}
                     </div>
                   </button>
                   {expandedCriteria.includes(index) && (
-                    <div className="p-4 bg-slate-700/30 border-t border-slate-700">
-                      <h4 className="text-sm font-semibold text-amber-500 mb-2">Officer&apos;s Concerns:</h4>
-                      <ul className="space-y-1">
+                    <div className="p-4 bg-gray-50 border-t border-gray-200">
+                      <h4 className="text-sm font-semibold text-amber-600 mb-2">Officer&apos;s Concerns:</h4>
+                      <ul className="space-y-2">
                         {criterion.officerConcerns.length > 0 ? (
                           criterion.officerConcerns.map((concern, i) => (
-                            <li key={i} className="text-sm text-slate-300 flex items-start gap-2">
+                            <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
                               <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
                               {concern}
                             </li>
                           ))
                         ) : (
-                          <li className="text-sm text-slate-400">No specific concerns noted</li>
+                          <li className="text-sm text-gray-500">No specific concerns noted</li>
                         )}
                       </ul>
                     </div>
@@ -301,16 +325,16 @@ export default function ScoringResultsPage() {
 
           {/* RFE Predictions */}
           {results.rfePredictions.length > 0 && (
-            <div className="bg-slate-800 rounded-xl p-6">
-              <h2 className="text-xl font-bold text-white mb-4">RFE Predictions</h2>
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">RFE Predictions</h2>
               <div className="space-y-3">
                 {results.rfePredictions.map((rfe, index) => (
-                  <div key={index} className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                  <div key={index} className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-semibold text-amber-400">{rfe.topic}</span>
-                      <span className="text-amber-500 font-bold">{rfe.probability}% likely</span>
+                      <span className="font-semibold text-amber-700">{rfe.topic}</span>
+                      <span className="text-amber-600 font-bold">{rfe.probability}% likely</span>
                     </div>
-                    <p className="text-sm text-slate-300">{rfe.officerPerspective}</p>
+                    <p className="text-sm text-gray-700">{rfe.officerPerspective}</p>
                   </div>
                 ))}
               </div>
@@ -318,17 +342,17 @@ export default function ScoringResultsPage() {
           )}
 
           {/* Recommendations */}
-          <div className="bg-slate-800 rounded-xl p-6">
-            <h2 className="text-xl font-bold text-white mb-4">Recommendations</h2>
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Recommendations</h2>
 
             {results.recommendations.critical.length > 0 && (
-              <div className="mb-4">
-                <h3 className="text-sm font-semibold text-red-400 mb-2">CRITICAL - Must Do</h3>
+              <div className="mb-6">
+                <h3 className="text-sm font-bold text-red-600 mb-3 uppercase tracking-wide">Critical - Must Do</h3>
                 <ul className="space-y-2">
                   {results.recommendations.critical.map((rec, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
-                      <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                      {rec}
+                    <li key={i} className="flex items-start gap-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <XCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+                      <span className="text-sm text-gray-800">{rec}</span>
                     </li>
                   ))}
                 </ul>
@@ -336,13 +360,13 @@ export default function ScoringResultsPage() {
             )}
 
             {results.recommendations.high.length > 0 && (
-              <div className="mb-4">
-                <h3 className="text-sm font-semibold text-amber-400 mb-2">HIGH PRIORITY - Should Do</h3>
+              <div className="mb-6">
+                <h3 className="text-sm font-bold text-amber-600 mb-3 uppercase tracking-wide">High Priority - Should Do</h3>
                 <ul className="space-y-2">
                   {results.recommendations.high.map((rec, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
-                      <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
-                      {rec}
+                    <li key={i} className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                      <span className="text-sm text-gray-800">{rec}</span>
                     </li>
                   ))}
                 </ul>
@@ -351,12 +375,12 @@ export default function ScoringResultsPage() {
 
             {results.recommendations.recommended.length > 0 && (
               <div>
-                <h3 className="text-sm font-semibold text-green-400 mb-2">RECOMMENDED - Would Help</h3>
+                <h3 className="text-sm font-bold text-green-600 mb-3 uppercase tracking-wide">Recommended - Would Help</h3>
                 <ul className="space-y-2">
                   {results.recommendations.recommended.map((rec, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
-                      <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                      {rec}
+                    <li key={i} className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                      <span className="text-sm text-gray-800">{rec}</span>
                     </li>
                   ))}
                 </ul>
@@ -366,17 +390,17 @@ export default function ScoringResultsPage() {
 
           {/* Full Report Toggle */}
           {results.fullReport && (
-            <div className="bg-slate-800 rounded-xl p-6">
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
               <button
                 onClick={() => setShowFullReport(!showFullReport)}
-                className="flex items-center gap-2 text-amber-500 hover:text-amber-400"
+                className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
               >
                 <FileText className="w-5 h-5" />
                 {showFullReport ? 'Hide' : 'Show'} Full Officer Report
               </button>
               {showFullReport && (
-                <div className="mt-4 p-4 bg-slate-900 rounded-lg overflow-auto max-h-[600px]">
-                  <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono">
+                <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200 overflow-auto max-h-[600px]">
+                  <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
                     {results.fullReport}
                   </pre>
                 </div>
@@ -387,30 +411,30 @@ export default function ScoringResultsPage() {
 
         {/* Chat Panel - 1 column */}
         <div className="lg:col-span-1">
-          <div className="bg-slate-800 rounded-xl overflow-hidden sticky top-4">
+          <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden sticky top-20 shadow-sm">
             <div
-              className="p-4 bg-slate-700 flex items-center justify-between cursor-pointer"
+              className="p-4 bg-blue-600 flex items-center justify-between cursor-pointer"
               onClick={() => setShowChat(!showChat)}
             >
               <div className="flex items-center gap-2">
-                <MessageSquare className="w-5 h-5 text-amber-500" />
+                <MessageSquare className="w-5 h-5 text-white" />
                 <span className="font-semibold text-white">Chat with Officer</span>
               </div>
               {showChat ? (
-                <ChevronDown className="w-5 h-5 text-slate-400" />
+                <ChevronDown className="w-5 h-5 text-white/70" />
               ) : (
-                <ChevronUp className="w-5 h-5 text-slate-400" />
+                <ChevronUp className="w-5 h-5 text-white/70" />
               )}
             </div>
 
             {showChat && (
               <>
                 {/* Messages */}
-                <div className="h-[400px] overflow-y-auto p-4 space-y-4">
+                <div className="h-[400px] overflow-y-auto p-4 space-y-4 bg-gray-50">
                   {chatMessages.length === 0 && (
-                    <div className="text-center text-slate-400 py-8">
-                      <MessageSquare className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                      <p>Ask the officer about your score</p>
+                    <div className="text-center text-gray-500 py-8">
+                      <MessageSquare className="w-12 h-12 mx-auto mb-2 opacity-30" />
+                      <p className="font-medium">Ask the officer about your score</p>
                       <p className="text-sm mt-2">
                         Try: &quot;Why did I score low on the awards criterion?&quot;
                       </p>
@@ -423,10 +447,10 @@ export default function ScoringResultsPage() {
                       className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
-                        className={`max-w-[85%] p-3 rounded-lg ${
+                        className={`max-w-[85%] p-3 rounded-xl ${
                           msg.role === 'user'
-                            ? 'bg-amber-500 text-slate-900'
-                            : 'bg-slate-700 text-white'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white border border-gray-200 text-gray-800'
                         }`}
                       >
                         <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
@@ -436,8 +460,8 @@ export default function ScoringResultsPage() {
 
                   {isSending && (
                     <div className="flex justify-start">
-                      <div className="bg-slate-700 p-3 rounded-lg">
-                        <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />
+                      <div className="bg-white border border-gray-200 p-3 rounded-xl">
+                        <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
                       </div>
                     </div>
                   )}
@@ -446,7 +470,7 @@ export default function ScoringResultsPage() {
                 </div>
 
                 {/* Input */}
-                <div className="p-4 border-t border-slate-700">
+                <div className="p-4 border-t border-gray-200 bg-white">
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -454,14 +478,14 @@ export default function ScoringResultsPage() {
                       onChange={(e) => setChatInput(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
                       placeholder="Ask about your score..."
-                      className="flex-1 px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-amber-500"
+                      className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                     <button
                       onClick={sendMessage}
                       disabled={!chatInput.trim() || isSending}
-                      className="p-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-600 rounded-lg transition-colors"
+                      className="p-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 rounded-xl transition-colors"
                     >
-                      <Send className="w-5 h-5 text-slate-900" />
+                      <Send className="w-5 h-5 text-white" />
                     </button>
                   </div>
                 </div>
