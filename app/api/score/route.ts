@@ -73,6 +73,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Truncate very long documents to avoid AI timeout
+    // Keep first 150,000 characters (~30,000 words, ~60 pages)
+    const MAX_CONTENT_LENGTH = 150000;
+    if (fullDocumentContent.length > MAX_CONTENT_LENGTH) {
+      console.log(`[Score] Truncating document from ${fullDocumentContent.length} to ${MAX_CONTENT_LENGTH} characters`);
+      fullDocumentContent = fullDocumentContent.substring(0, MAX_CONTENT_LENGTH) +
+        '\n\n[... Document truncated for processing. Scoring based on first ~60 pages of content ...]';
+    }
+
     // Get visa type and document type
     const visaType = (session?.visa_type || body.visaType || 'O-1A') as VisaType;
     const documentType = (session?.document_type || body.documentType || 'full_petition') as DocumentType;
@@ -146,17 +155,32 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[Score] Scoring failed:', error);
 
-    // Update session with error if possible
-    const body = await request.json().catch(() => ({}));
-    if (body.sessionId && isSupabaseConfigured()) {
-      await updateScoringSession(body.sessionId, {
-        status: 'error',
-        errorMessage: error instanceof Error ? error.message : 'Scoring failed',
-      }).catch(console.error);
+    // Always return proper JSON
+    const errorMessage = error instanceof Error ? error.message : 'Scoring failed';
+
+    // Try to update session with error - don't await to avoid double timeout
+    try {
+      if (isSupabaseConfigured()) {
+        // Get sessionId from the original request body if possible
+        const bodyText = await request.text().catch(() => '{}');
+        const body = JSON.parse(bodyText).catch?.(() => ({})) || {};
+        if (body.sessionId) {
+          updateScoringSession(body.sessionId, {
+            status: 'error',
+            errorMessage,
+          }).catch(console.error);
+        }
+      }
+    } catch {
+      // Ignore errors when trying to update session
     }
 
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Scoring failed' },
+      {
+        success: false,
+        error: errorMessage,
+        message: 'Scoring failed. If this is a large document, please try again or upload a smaller file.'
+      },
       { status: 500 }
     );
   }

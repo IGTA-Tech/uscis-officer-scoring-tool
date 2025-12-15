@@ -96,12 +96,18 @@ export default function NewScoringPage() {
         body: formData,
       });
 
-      if (!uploadResponse.ok) {
-        const data = await uploadResponse.json();
-        throw new Error(data.error || 'Upload failed');
+      // Handle upload response with better error handling
+      let uploadData;
+      try {
+        uploadData = await uploadResponse.json();
+      } catch {
+        throw new Error('Server error during upload. Please try again with a smaller file.');
       }
 
-      const uploadData = await uploadResponse.json();
+      if (!uploadResponse.ok) {
+        throw new Error(uploadData.error || 'Upload failed');
+      }
+
       const sessionId = uploadData.sessionId;
 
       setIsUploading(false);
@@ -113,9 +119,16 @@ export default function NewScoringPage() {
         body: JSON.stringify({ sessionId }),
       });
 
+      // Handle score response with better error handling
+      let scoreData;
+      try {
+        scoreData = await scoreResponse.json();
+      } catch {
+        throw new Error('Server timeout during scoring. Large documents may take longer to process. Please try again.');
+      }
+
       if (!scoreResponse.ok) {
-        const data = await scoreResponse.json();
-        throw new Error(data.error || 'Scoring failed');
+        throw new Error(scoreData.error || scoreData.message || 'Scoring failed');
       }
 
       router.push(`/scoring/${sessionId}`);

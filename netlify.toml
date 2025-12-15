@@ -10,8 +10,9 @@
 
 [functions]
   node_bundler = "esbuild"
-  # Extended timeout for large PDF processing (in seconds)
-  # Netlify Pro allows up to 26 seconds
+  # Extended timeout for PDF processing
+  # Note: Netlify free tier is 10s, Pro allows 26s
+  # For longer processing, consider background functions
 
 [[headers]]
   for = "/api/*"
@@ -20,3 +21,9 @@
     Access-Control-Allow-Methods = "GET, POST, OPTIONS"
     Access-Control-Allow-Headers = "Content-Type"
 
+# Increase body size limit for large file uploads
+[dev]
+  targetPort = 3000
+
+# Background function configuration for long-running tasks
+# These can run for up to 15 minutes
