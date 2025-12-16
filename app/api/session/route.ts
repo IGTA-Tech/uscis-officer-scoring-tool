@@ -97,22 +97,28 @@ export async function POST(request: NextRequest) {
     if (isInngestConfigured()) {
       console.log(`[Session] Triggering Inngest for session ${sessionId}`);
 
-      await inngest.send({
-        name: 'scoring/requested',
-        data: {
-          sessionId,
-          documentType,
-          visaType,
-          beneficiaryName,
-        },
-      });
+      try {
+        await inngest.send({
+          name: 'scoring/requested',
+          data: {
+            sessionId,
+            documentType,
+            visaType,
+            beneficiaryName,
+          },
+        });
 
-      return NextResponse.json({
-        success: true,
-        sessionId,
-        status: 'queued',
-        message: 'Files uploaded. Processing started in background.',
-      });
+        return NextResponse.json({
+          success: true,
+          sessionId,
+          status: 'queued',
+          message: 'Files uploaded. Processing started in background.',
+        });
+      } catch (inngestError) {
+        // Inngest failed - still return success, user can trigger scoring manually
+        console.error('[Session] Inngest send failed:', inngestError);
+        console.log('[Session] Returning session ID for manual scoring trigger');
+      }
     }
 
     // Fallback: return session ID for manual scoring

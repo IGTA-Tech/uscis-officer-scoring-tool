@@ -40,3 +40,4 @@ netlify-env.txt
 
 # Local Netlify folder
 .netlify
+.mcp.json
