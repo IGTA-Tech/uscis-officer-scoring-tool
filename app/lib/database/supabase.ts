@@ -148,18 +148,23 @@ export async function updateUploadedFile(
     wordCount?: number;
     pageCount?: number;
     documentCategory?: string;
+    storagePath?: string;
   }
 ) {
   const supabase = getSupabase();
+
+  // Build update object, only including defined values
+  const updateObj: Record<string, unknown> = {};
+  if (updates.status !== undefined) updateObj.status = updates.status;
+  if (updates.extractedText !== undefined) updateObj.extracted_text = updates.extractedText;
+  if (updates.wordCount !== undefined) updateObj.word_count = updates.wordCount;
+  if (updates.pageCount !== undefined) updateObj.page_count = updates.pageCount;
+  if (updates.documentCategory !== undefined) updateObj.document_category = updates.documentCategory;
+  if (updates.storagePath !== undefined) updateObj.storage_path = updates.storagePath;
+
   const { data, error } = await supabase
     .from('uploaded_files')
-    .update({
-      status: updates.status,
-      extracted_text: updates.extractedText,
-      word_count: updates.wordCount,
-      page_count: updates.pageCount,
-      document_category: updates.documentCategory,
-    })
+    .update(updateObj)
     .eq('id', id)
     .select()
     .single();

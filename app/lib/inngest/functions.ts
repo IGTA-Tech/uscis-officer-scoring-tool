@@ -7,12 +7,15 @@
 
 import { inngest } from './client';
 import { runOfficerScoring } from '../scoring/officer-scorer';
+import { extractTextFromPDF, extractTextFromImage } from '../ai/mistral-ocr';
 import {
   getScoringSession,
   getFilesForSession,
   updateScoringSession,
   saveScoringResults,
+  updateUploadedFile,
   isSupabaseConfigured,
+  getSupabase,
 } from '../database/supabase';
 import { DocumentType, VisaType } from '../types';
 
@@ -51,12 +54,82 @@ export const scorePetition = inngest.createFunction(
       }
     });
 
-    // Step 2: Get document content from uploaded files
+    // Step 2: Extract text from files that need it
+    await step.run('extract-text-from-files', async () => {
+      if (!isSupabaseConfigured()) {
+        throw new Error('Database not configured');
+      }
+
+      const files = await getFilesForSession(sessionId);
+      const supabase = getSupabase();
+
+      for (const file of files) {
+        // Skip files that already have extracted text
+        if (file.extracted_text && file.extracted_text.length > 100) {
+          continue;
+        }
+
+        // Check if file needs extraction (has storage path)
+        if (!file.storage_path) {
+          console.log(`[Inngest] File ${file.filename} has no storage path, skipping`);
+          continue;
+        }
+
+        console.log(`[Inngest] Extracting text from ${file.filename}`);
+
+        await updateScoringSession(sessionId, {
+          progress: 10,
+          progressMessage: `Extracting text from ${file.filename}...`,
+        });
+
+        // Download file from storage
+        const { data: fileData, error: downloadError } = await supabase.storage
+          .from('scoring-documents')
+          .download(file.storage_path);
+
+        if (downloadError || !fileData) {
+          console.error(`[Inngest] Failed to download ${file.filename}:`, downloadError);
+          continue;
+        }
+
+        const buffer = Buffer.from(await fileData.arrayBuffer());
+        let extractedText = '';
+        let pageCount = 0;
+
+        // Extract based on file type
+        if (file.file_type === 'application/pdf') {
+          const result = await extractTextFromPDF(buffer, file.filename);
+          extractedText = result.text;
+          pageCount = result.pageCount;
+        } else if (file.file_type?.startsWith('image/')) {
+          extractedText = await extractTextFromImage(buffer, file.file_type, file.filename);
+          pageCount = 1;
+        } else if (file.file_type === 'text/plain') {
+          extractedText = buffer.toString('utf-8');
+          pageCount = Math.ceil(extractedText.split(/\s+/).length / 500);
+        }
+
+        const wordCount = extractedText.split(/\s+/).filter((w: string) => w.length > 0).length;
+
+        // Update file record with extracted text
+        await updateUploadedFile(file.id, {
+          status: 'completed',
+          extractedText,
+          wordCount,
+          pageCount,
+        });
+
+        console.log(`[Inngest] Extracted ${wordCount} words from ${file.filename}`);
+      }
+    });
+
+    // Step 3: Get document content from uploaded files
     const documentContent = await step.run('get-document-content', async () => {
       if (!isSupabaseConfigured()) {
         throw new Error('Database not configured');
       }
 
+      // Re-fetch files to get updated extracted text
       const files = await getFilesForSession(sessionId);
 
       if (files.length === 0) {

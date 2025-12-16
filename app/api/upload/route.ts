@@ -124,6 +124,8 @@ export async function POST(request: NextRequest) {
 
         // Create file record if Supabase is configured
         let fileRecord = null;
+        let storagePath = '';
+
         if (isSupabaseConfigured()) {
           fileRecord = await createUploadedFile({
             sessionId: currentSessionId,
@@ -134,7 +136,7 @@ export async function POST(request: NextRequest) {
 
           // Upload to Supabase Storage
           const supabase = getSupabase();
-          const storagePath = `scoring/${currentSessionId}/${fileId}_${sanitizeFilename(file.name)}`;
+          storagePath = `scoring/${currentSessionId}/${fileId}_${sanitizeFilename(file.name)}`;
 
           const { error: uploadError } = await supabase.storage
             .from('scoring-documents')
@@ -146,43 +148,60 @@ export async function POST(request: NextRequest) {
           if (uploadError) {
             console.error('[Upload] Storage upload failed:', uploadError);
           } else {
+            // Mark as pending extraction (will be done by Inngest)
             await updateUploadedFile(fileRecord.id, {
-              status: 'processing',
+              status: 'pending_extraction',
+              storagePath,
             });
           }
         }
 
-        // Extract text based on file type
+        // For small files (<1MB), extract text immediately
+        // For large files, defer to Inngest background processing
         let extractedText = '';
         let pageCount = 0;
+        let documentCategory = 'unknown';
+        let wordCount = 0;
 
-        if (file.type === 'application/pdf') {
-          const result = await extractTextFromPDF(buffer, file.name);
-          extractedText = result.text;
-          pageCount = result.pageCount;
-        } else if (file.type.startsWith('image/')) {
-          extractedText = await extractTextFromImage(buffer, file.type, file.name);
-          pageCount = 1;
-        } else if (file.type === 'text/plain') {
-          extractedText = buffer.toString('utf-8');
-          pageCount = Math.ceil(extractedText.split(/\s+/).length / 500);
-        }
+        const isSmallFile = file.size < 1 * 1024 * 1024; // 1MB threshold
 
-        // Detect document category
-        const documentCategory = detectDocumentCategory(file.name, extractedText);
+        if (isSmallFile) {
+          // Extract text immediately for small files
+          if (file.type === 'application/pdf') {
+            const result = await extractTextFromPDF(buffer, file.name);
+            extractedText = result.text;
+            pageCount = result.pageCount;
+          } else if (file.type.startsWith('image/')) {
+            extractedText = await extractTextFromImage(buffer, file.type, file.name);
+            pageCount = 1;
+          } else if (file.type === 'text/plain') {
+            extractedText = buffer.toString('utf-8');
+            pageCount = Math.ceil(extractedText.split(/\s+/).length / 500);
+          }
 
-        // Calculate word count
-        const wordCount = extractedText.split(/\s+/).filter(w => w.length > 0).length;
+          documentCategory = detectDocumentCategory(file.name, extractedText);
+          wordCount = extractedText.split(/\s+/).filter(w => w.length > 0).length;
 
-        // Update file record with extraction results
-        if (isSupabaseConfigured() && fileRecord) {
-          await updateUploadedFile(fileRecord.id, {
-            status: 'completed',
-            extractedText,
-            wordCount,
-            pageCount,
-            documentCategory,
-          });
+          // Update file record with extraction results
+          if (isSupabaseConfigured() && fileRecord) {
+            await updateUploadedFile(fileRecord.id, {
+              status: 'completed',
+              extractedText,
+              wordCount,
+              pageCount,
+              documentCategory,
+            });
+          }
+        } else {
+          // Large file - mark for background extraction
+          documentCategory = detectDocumentCategory(file.name, '');
+
+          if (isSupabaseConfigured() && fileRecord) {
+            await updateUploadedFile(fileRecord.id, {
+              status: 'pending_extraction',
+              documentCategory,
+            });
+          }
         }
 
         processedFiles.push({
@@ -193,7 +212,8 @@ export async function POST(request: NextRequest) {
           wordCount,
           pageCount,
           documentCategory,
-          extractedText: extractedText.substring(0, 500) + (extractedText.length > 500 ? '...' : ''),
+          needsBackgroundProcessing: !isSmallFile,
+          extractedText: extractedText ? extractedText.substring(0, 500) + (extractedText.length > 500 ? '...' : '') : '[Queued for background extraction]',
         });
       } catch (fileError) {
         console.error(`[Upload] Error processing file ${file.name}:`, fileError);
