@@ -41,6 +41,8 @@ export async function uploadFileToStorage(
     xhr.addEventListener('load', () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve({ path: storagePath, error: null });
+      } else if (xhr.status === 403 || xhr.status === 401) {
+        resolve({ path: '', error: 'Storage authentication failed. Please ensure the storage bucket policies are configured correctly.' });
       } else {
         resolve({ path: '', error: `Upload failed with status ${xhr.status}` });
       }
@@ -83,6 +85,13 @@ export async function uploadFileSimple(
     });
 
   if (error) {
+    // Provide more helpful error messages for common issues
+    if (error.message.includes('row-level security') || error.message.includes('security policy')) {
+      return { path: '', error: 'Storage policy error. Please run the storage bucket migration (003_storage_bucket.sql).' };
+    }
+    if (error.message.includes('Bucket not found')) {
+      return { path: '', error: 'Storage bucket not found. Please run the storage bucket migration (003_storage_bucket.sql).' };
+    }
     return { path: '', error: error.message };
   }
 
