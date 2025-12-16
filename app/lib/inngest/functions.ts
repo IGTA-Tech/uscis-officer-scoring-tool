@@ -20,6 +20,50 @@ import {
 import { DocumentType, VisaType } from '../types';
 
 /**
+ * Download file from storage with retry logic (no timeout - let it run as long as needed)
+ */
+async function downloadWithRetry(
+  supabase: ReturnType<typeof getSupabase>,
+  storagePath: string,
+  maxRetries: number = 3
+): Promise<{ data: Blob | null; error: Error | null }> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[Inngest] Download attempt ${attempt}/${maxRetries} for ${storagePath}`);
+
+      const { data, error } = await supabase.storage
+        .from('scoring-documents')
+        .download(storagePath);
+
+      if (error) {
+        throw new Error(`Storage error: ${error.message}`);
+      }
+
+      if (!data) {
+        throw new Error('No data returned from storage');
+      }
+
+      console.log(`[Inngest] Download successful on attempt ${attempt}`);
+      return { data, error: null };
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.error(`[Inngest] Download attempt ${attempt} failed:`, lastError.message);
+
+      if (attempt < maxRetries) {
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = Math.pow(2, attempt - 1) * 1000;
+        console.log(`[Inngest] Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  return { data: null, error: lastError };
+}
+
+/**
  * Background scoring function
  * Triggered when a user uploads documents for scoring
  */
@@ -63,63 +107,104 @@ export const scorePetition = inngest.createFunction(
       const files = await getFilesForSession(sessionId);
       const supabase = getSupabase();
 
-      for (const file of files) {
-        // Skip files that already have extracted text
-        if (file.extracted_text && file.extracted_text.length > 100) {
-          continue;
-        }
+      const filesToProcess = files.filter(
+        (f: { extracted_text?: string; storage_path?: string }) =>
+          (!f.extracted_text || f.extracted_text.length <= 100) && f.storage_path
+      );
 
-        // Check if file needs extraction (has storage path)
-        if (!file.storage_path) {
-          console.log(`[Inngest] File ${file.filename} has no storage path, skipping`);
-          continue;
-        }
+      console.log(`[Inngest] Found ${filesToProcess.length} files needing extraction out of ${files.length} total`);
 
-        console.log(`[Inngest] Extracting text from ${file.filename}`);
+      let processedCount = 0;
+      let failedCount = 0;
+      const errors: string[] = [];
+
+      for (const file of filesToProcess) {
+        const fileIndex = processedCount + failedCount;
+        const progressPercent = 5 + Math.floor((fileIndex / filesToProcess.length) * 15); // 5-20%
+
+        console.log(`[Inngest] Processing file ${fileIndex + 1}/${filesToProcess.length}: ${file.filename}`);
 
         await updateScoringSession(sessionId, {
-          progress: 10,
-          progressMessage: `Extracting text from ${file.filename}...`,
+          progress: progressPercent,
+          progressMessage: `Extracting text from ${file.filename} (${fileIndex + 1}/${filesToProcess.length})...`,
         });
 
-        // Download file from storage
-        const { data: fileData, error: downloadError } = await supabase.storage
-          .from('scoring-documents')
-          .download(file.storage_path);
+        // Download file from storage with retry
+        const { data: fileData, error: downloadError } = await downloadWithRetry(
+          supabase,
+          file.storage_path
+        );
 
         if (downloadError || !fileData) {
-          console.error(`[Inngest] Failed to download ${file.filename}:`, downloadError);
+          const errorMsg = `Failed to download ${file.filename}: ${downloadError?.message || 'Unknown error'}`;
+          console.error(`[Inngest] ${errorMsg}`);
+          errors.push(errorMsg);
+          failedCount++;
+
+          // Update file status to error
+          await updateUploadedFile(file.id, {
+            status: 'error',
+          });
           continue;
         }
 
-        const buffer = Buffer.from(await fileData.arrayBuffer());
-        let extractedText = '';
-        let pageCount = 0;
+        try {
+          const buffer = Buffer.from(await fileData.arrayBuffer());
+          let extractedText = '';
+          let pageCount = 0;
 
-        // Extract based on file type
-        if (file.file_type === 'application/pdf') {
-          const result = await extractTextFromPDF(buffer, file.filename);
-          extractedText = result.text;
-          pageCount = result.pageCount;
-        } else if (file.file_type?.startsWith('image/')) {
-          extractedText = await extractTextFromImage(buffer, file.file_type, file.filename);
-          pageCount = 1;
-        } else if (file.file_type === 'text/plain') {
-          extractedText = buffer.toString('utf-8');
-          pageCount = Math.ceil(extractedText.split(/\s+/).length / 500);
+          // Extract based on file type
+          if (file.file_type === 'application/pdf') {
+            const result = await extractTextFromPDF(buffer, file.filename);
+            extractedText = result.text;
+            pageCount = result.pageCount;
+          } else if (file.file_type?.startsWith('image/')) {
+            extractedText = await extractTextFromImage(buffer, file.file_type, file.filename);
+            pageCount = 1;
+          } else if (file.file_type === 'text/plain') {
+            extractedText = buffer.toString('utf-8');
+            pageCount = Math.ceil(extractedText.split(/\s+/).length / 500);
+          }
+
+          const wordCount = extractedText.split(/\s+/).filter((w: string) => w.length > 0).length;
+
+          // Update file record with extracted text
+          await updateUploadedFile(file.id, {
+            status: 'completed',
+            extractedText,
+            wordCount,
+            pageCount,
+          });
+
+          console.log(`[Inngest] Extracted ${wordCount} words from ${file.filename}`);
+          processedCount++;
+        } catch (extractError) {
+          const errorMsg = `Failed to extract text from ${file.filename}: ${extractError instanceof Error ? extractError.message : 'Unknown error'}`;
+          console.error(`[Inngest] ${errorMsg}`);
+          errors.push(errorMsg);
+          failedCount++;
+
+          await updateUploadedFile(file.id, {
+            status: 'error',
+          });
         }
+      }
 
-        const wordCount = extractedText.split(/\s+/).filter((w: string) => w.length > 0).length;
+      console.log(`[Inngest] Extraction complete: ${processedCount} succeeded, ${failedCount} failed`);
 
-        // Update file record with extracted text
-        await updateUploadedFile(file.id, {
-          status: 'completed',
-          extractedText,
-          wordCount,
-          pageCount,
+      // If ALL files failed, throw an error to stop processing
+      if (failedCount > 0 && processedCount === 0) {
+        await updateScoringSession(sessionId, {
+          status: 'error',
+          progress: 15,
+          progressMessage: `All file extractions failed: ${errors.join('; ')}`,
         });
+        throw new Error(`All file extractions failed: ${errors.join('; ')}`);
+      }
 
-        console.log(`[Inngest] Extracted ${wordCount} words from ${file.filename}`);
+      // If some files failed but some succeeded, continue with warning
+      if (failedCount > 0) {
+        console.warn(`[Inngest] Continuing with ${processedCount} files, ${failedCount} failed`);
       }
     });
 

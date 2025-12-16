@@ -12,12 +12,14 @@ let supabaseClient: SupabaseClient | null = null;
 export function getSupabase(): SupabaseClient {
   if (!supabaseClient) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const hasServiceKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!url || !key) {
       throw new Error('Supabase environment variables not configured');
     }
 
+    console.log(`[Supabase] Initializing client with ${hasServiceKey ? 'SERVICE ROLE' : 'ANON'} key for URL: ${url}`);
     supabaseClient = createClient(url, key);
   }
   return supabaseClient;

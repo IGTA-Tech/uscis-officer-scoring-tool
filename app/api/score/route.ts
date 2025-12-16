@@ -53,33 +53,48 @@ export async function POST(request: NextRequest) {
     if (useBackground && isInngestConfigured()) {
       console.log(`[Score] Triggering background scoring for session ${sessionId}`);
 
-      // Update session status
-      if (isSupabaseConfigured()) {
-        await updateScoringSession(sessionId, {
-          status: 'queued',
-          progress: 0,
-          progressMessage: 'Queued for processing...',
+      try {
+        // Update session status
+        if (isSupabaseConfigured()) {
+          await updateScoringSession(sessionId, {
+            status: 'queued',
+            progress: 0,
+            progressMessage: 'Queued for processing...',
+          });
+        }
+
+        // Send event to Inngest
+        await inngest.send({
+          name: 'scoring/requested',
+          data: {
+            sessionId,
+            documentType,
+            visaType,
+            beneficiaryName,
+          },
         });
-      }
 
-      // Send event to Inngest
-      await inngest.send({
-        name: 'scoring/requested',
-        data: {
+        return NextResponse.json({
+          success: true,
           sessionId,
-          documentType,
-          visaType,
-          beneficiaryName,
-        },
-      });
+          status: 'queued',
+          message: 'Scoring started in background. Poll /api/score?sessionId=... for progress.',
+          background: true,
+        });
+      } catch (inngestError) {
+        // Inngest failed - fall through to synchronous processing
+        console.error('[Score] Inngest failed, falling back to synchronous:', inngestError);
+        console.log('[Score] Continuing with synchronous processing...');
 
-      return NextResponse.json({
-        success: true,
-        sessionId,
-        status: 'queued',
-        message: 'Scoring started in background. Poll /api/score?sessionId=... for progress.',
-        background: true,
-      });
+        if (isSupabaseConfigured()) {
+          await updateScoringSession(sessionId, {
+            status: 'processing',
+            progress: 5,
+            progressMessage: 'Processing synchronously (background queue unavailable)...',
+          });
+        }
+        // Fall through to synchronous processing below
+      }
     }
 
     // Synchronous processing (fallback or explicit request)
