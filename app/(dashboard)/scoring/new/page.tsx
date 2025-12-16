@@ -9,14 +9,18 @@ import {
   Loader2,
   Scale,
   X,
+  CheckCircle,
 } from 'lucide-react';
+import { uploadFileSimple } from '@/app/lib/database/supabase-client';
 
 type DocumentType = 'full_petition' | 'rfe_response' | 'exhibit_packet' | 'contract_deal_memo';
 type VisaType = 'O-1A' | 'O-1B' | 'P-1A' | 'EB-1A';
 
 interface UploadedFile {
   file: File;
-  status: 'pending' | 'uploading' | 'success' | 'error';
+  status: 'pending' | 'uploading' | 'uploaded' | 'success' | 'error';
+  progress?: number;
+  storagePath?: string;
   error?: string;
   category?: string;
 }
@@ -80,58 +84,71 @@ export default function NewScoringPage() {
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append('documentType', documentType);
-      formData.append('visaType', visaType);
-      if (beneficiaryName) {
-        formData.append('beneficiaryName', beneficiaryName);
+      // Step 1: Generate a session ID for organizing uploads
+      const sessionId = crypto.randomUUID();
+
+      // Step 2: Upload each file directly to Supabase Storage (browser → Supabase)
+      const uploadedFiles: { filename: string; fileType: string; fileSize: number; storagePath: string }[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+
+        // Update status to uploading
+        setFiles(prev => prev.map((file, idx) =>
+          idx === i ? { ...file, status: 'uploading' as const, progress: 0 } : file
+        ));
+
+        // Upload directly to Supabase Storage
+        const { path, error: uploadError } = await uploadFileSimple(f.file, sessionId);
+
+        if (uploadError) {
+          setFiles(prev => prev.map((file, idx) =>
+            idx === i ? { ...file, status: 'error' as const, error: uploadError } : file
+          ));
+          throw new Error(`Failed to upload ${f.file.name}: ${uploadError}`);
+        }
+
+        // Mark as uploaded
+        setFiles(prev => prev.map((file, idx) =>
+          idx === i ? { ...file, status: 'uploaded' as const, storagePath: path, progress: 100 } : file
+        ));
+
+        uploadedFiles.push({
+          filename: f.file.name,
+          fileType: f.file.type,
+          fileSize: f.file.size,
+          storagePath: path,
+        });
       }
 
-      files.forEach((f, index) => {
-        formData.append(`file${index}`, f.file);
-      });
-
-      const uploadResponse = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      // Handle upload response with better error handling
-      let uploadData;
-      try {
-        uploadData = await uploadResponse.json();
-      } catch {
-        throw new Error('Server error during upload. Please try again with a smaller file.');
-      }
-
-      if (!uploadResponse.ok) {
-        throw new Error(uploadData.error || 'Upload failed');
-      }
-
-      const sessionId = uploadData.sessionId;
-
+      // Step 3: Create session and trigger background processing
       setIsUploading(false);
       setIsScoring(true);
 
-      const scoreResponse = await fetch('/api/score', {
+      const sessionResponse = await fetch('/api/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({
+          documentType,
+          visaType,
+          beneficiaryName: beneficiaryName || undefined,
+          files: uploadedFiles,
+        }),
       });
 
-      // Handle score response with better error handling
-      let scoreData;
+      let sessionData;
       try {
-        scoreData = await scoreResponse.json();
+        sessionData = await sessionResponse.json();
       } catch {
-        throw new Error('Server timeout during scoring. Large documents may take longer to process. Please try again.');
+        throw new Error('Server error creating session. Please try again.');
       }
 
-      if (!scoreResponse.ok) {
-        throw new Error(scoreData.error || scoreData.message || 'Scoring failed');
+      if (!sessionResponse.ok) {
+        throw new Error(sessionData.error || 'Failed to create session');
       }
 
-      router.push(`/scoring/${sessionId}`);
+      // Navigate to results page (will show progress as Inngest processes)
+      router.push(`/scoring/${sessionData.sessionId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
       setIsUploading(false);
@@ -243,26 +260,63 @@ export default function NewScoringPage() {
             {files.map((f, index) => (
               <div
                 key={index}
-                className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200"
+                className={`p-4 rounded-xl border ${
+                  f.status === 'error'
+                    ? 'bg-red-50 border-red-200'
+                    : f.status === 'uploaded'
+                    ? 'bg-green-50 border-green-200'
+                    : 'bg-gray-50 border-gray-200'
+                }`}
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <FileText className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <div className="text-gray-900 font-medium text-sm">{f.file.name}</div>
-                    <div className="text-gray-500 text-xs">
-                      {(f.file.size / (1024 * 1024)).toFixed(2)} MB
-                      {f.category && ` • ${f.category}`}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                      f.status === 'error'
+                        ? 'bg-red-100'
+                        : f.status === 'uploaded'
+                        ? 'bg-green-100'
+                        : f.status === 'uploading'
+                        ? 'bg-blue-100'
+                        : 'bg-blue-100'
+                    }`}>
+                      {f.status === 'uploading' ? (
+                        <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                      ) : f.status === 'uploaded' ? (
+                        <CheckCircle className="w-5 h-5 text-green-600" />
+                      ) : f.status === 'error' ? (
+                        <AlertCircle className="w-5 h-5 text-red-600" />
+                      ) : (
+                        <FileText className="w-5 h-5 text-blue-600" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-gray-900 font-medium text-sm">{f.file.name}</div>
+                      <div className="text-gray-500 text-xs">
+                        {(f.file.size / (1024 * 1024)).toFixed(2)} MB
+                        {f.status === 'uploading' && ' • Uploading...'}
+                        {f.status === 'uploaded' && ' • Uploaded'}
+                        {f.status === 'error' && f.error && ` • ${f.error}`}
+                      </div>
                     </div>
                   </div>
+                  {f.status === 'pending' && (
+                    <button
+                      onClick={() => removeFile(index)}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
-                <button
-                  onClick={() => removeFile(index)}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                {/* Progress bar for uploading files */}
+                {f.status === 'uploading' && (
+                  <div className="mt-2 h-1 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 transition-all duration-300"
+                      style={{ width: `${f.progress || 0}%` }}
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>
