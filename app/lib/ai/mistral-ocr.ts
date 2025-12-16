@@ -7,6 +7,16 @@
 
 import { Mistral } from '@mistralai/mistralai';
 
+// Polyfill for DOMMatrix which pdf-parse/pdfjs requires but doesn't exist in serverless
+if (typeof globalThis.DOMMatrix === 'undefined') {
+  // @ts-expect-error - polyfill for serverless environment
+  globalThis.DOMMatrix = class DOMMatrix {
+    constructor() {
+      return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+    }
+  };
+}
+
 // Dynamic import for pdf-parse to avoid ESM issues
 async function parsePDF(buffer: Buffer): Promise<{ text: string; numpages: number }> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -68,10 +78,15 @@ export async function extractTextFromPDF(
   } catch (error) {
     console.error('[PDF] pdf-parse failed:', error);
 
-    // Try Mistral OCR as fallback for small files only
-    if (pdfBuffer.length < 5 * 1024 * 1024) {
+    // Try Mistral OCR as fallback - increase limit to 10MB
+    if (pdfBuffer.length < 10 * 1024 * 1024) {
       console.log('[PDF] Attempting Mistral OCR fallback...');
-      return extractTextFromPDFWithMistral(pdfBuffer, filename);
+      try {
+        return await extractTextFromPDFWithMistral(pdfBuffer, filename);
+      } catch (mistralError) {
+        console.error('[PDF] Mistral OCR also failed:', mistralError);
+        throw new Error(`Failed to extract text from PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
 
     throw new Error(`Failed to extract text from PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
