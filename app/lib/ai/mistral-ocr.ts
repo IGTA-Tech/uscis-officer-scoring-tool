@@ -39,17 +39,32 @@ function getMistralClient(): Mistral {
 }
 
 /**
- * Extract text from PDF using pdf-parse (fast, reliable for text-based PDFs)
- * Falls back to Mistral OCR if pdf-parse yields very little text (image-based PDF)
+ * Extract text from PDF
+ * Uses Mistral OCR as primary method (more reliable in serverless)
+ * Falls back to pdf-parse for very large files
  */
 export async function extractTextFromPDF(
   pdfBuffer: Buffer,
   filename: string
 ): Promise<{ text: string; pageCount: number }> {
-  console.log(`[PDF] Extracting text from ${filename} (${(pdfBuffer.length / (1024 * 1024)).toFixed(2)}MB)`);
+  const fileSizeMB = pdfBuffer.length / (1024 * 1024);
+  console.log(`[PDF] Extracting text from ${filename} (${fileSizeMB.toFixed(2)}MB)`);
 
+  // For files under 10MB, use Mistral OCR (more reliable in serverless)
+  if (pdfBuffer.length < 10 * 1024 * 1024) {
+    console.log('[PDF] Using Mistral OCR for extraction...');
+    try {
+      return await extractTextFromPDFWithMistral(pdfBuffer, filename);
+    } catch (mistralError) {
+      console.error('[PDF] Mistral OCR failed:', mistralError);
+      // Fall back to pdf-parse
+      console.log('[PDF] Falling back to pdf-parse...');
+    }
+  }
+
+  // For large files or if Mistral failed, try pdf-parse
   try {
-    // First try pdf-parse - fast and reliable for text-based PDFs
+    console.log('[PDF] Using pdf-parse for extraction...');
     const pdfData = await parsePDF(pdfBuffer);
 
     const text = pdfData.text || '';
@@ -57,38 +72,17 @@ export async function extractTextFromPDF(
 
     console.log(`[PDF] Extracted ${text.length} characters from ${pageCount} pages`);
 
-    // If we got meaningful text, use it
-    if (text.length > 500) {
+    if (text.length > 100) {
       return { text, pageCount };
     }
 
-    // If very little text, it might be an image-based PDF - try Mistral OCR
-    // But only for small files (< 5MB) to avoid timeouts
-    if (pdfBuffer.length < 5 * 1024 * 1024) {
-      console.log('[PDF] Low text content, attempting Mistral OCR...');
-      return extractTextFromPDFWithMistral(pdfBuffer, filename);
-    }
-
-    // For large image-based PDFs, return what we have with a note
-    console.log('[PDF] Large file with low text - returning available text');
+    // Very little text extracted
     return {
-      text: text.length > 0 ? text : '[This PDF appears to be image-based. Text extraction is limited for large scanned documents.]',
+      text: '[This PDF appears to be image-based or has minimal extractable text. For best results, upload a text-based PDF or smaller file.]',
       pageCount,
     };
   } catch (error) {
-    console.error('[PDF] pdf-parse failed:', error);
-
-    // Try Mistral OCR as fallback - increase limit to 10MB
-    if (pdfBuffer.length < 10 * 1024 * 1024) {
-      console.log('[PDF] Attempting Mistral OCR fallback...');
-      try {
-        return await extractTextFromPDFWithMistral(pdfBuffer, filename);
-      } catch (mistralError) {
-        console.error('[PDF] Mistral OCR also failed:', mistralError);
-        throw new Error(`Failed to extract text from PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-    }
-
+    console.error('[PDF] pdf-parse also failed:', error);
     throw new Error(`Failed to extract text from PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
